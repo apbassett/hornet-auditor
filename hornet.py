@@ -6,6 +6,10 @@
 '''
 import argparse
 import re
+from pathlib import Path
+
+# Default root directory location to search for files from
+DEFAULT_ROOT_DIR = './test/'
 
 def find_pattern(filename, pattern):
 	'''
@@ -22,40 +26,105 @@ def find_pattern(filename, pattern):
 			matches += pattern.findall(line)
 
 	file.close()
-	print(matches)
 
 	if len(matches) < 1:
-		print('docker file did not set a user')
 		return False
+	return True
+
+
+def compliant(dockerfiles, yamls, pattern, eval_docker=False, eval_yamls=False):
+	'''
+		Evaluate whether the given pattern exists in all of the specified Dockerfiles, or in
+		any of the specified Kubernetes yaml files.
+	'''
+	if eval_yamls:
+		for yaml in yamls:
+			if find_pattern(yaml):
+				break
 	else:
-		print('docker file did set a user')
-		return True
+		for dockerfile in dockerfiles:
+			if not find_pattern(dockerfile):
+				return False
+		else:
+			return False	
+	return True
 
 
-
-## MAIN
-
-
-parser = argparse.ArgumentParser()
-#TODO: Update this to take a list
-parser.add_argument('--file', '-f', help = 'The name of file to parse')
-args = parser.parse_args()
-
-pattern = re.compile('USER')
-files = []
-files.append(args.file)
+def locate_files(docker_dir, k8s_dir):
+	'''
+		Search all subdirectories of the given paths and return a tuple of lists containing
+		Dockerfiles and Kubernetes yamls to parse.
+	'''
+	dockerfiles = list(Path(docker_dir).rglob('Dockerfile')) 
+	k8s_yamls = list(Path(docker_dir).rglob('*.y*ml'))
+	return dockerfiles, k8s_yamls
 
 
-passed = []
-failed = []
+def main(docker_dir, k8s_dir):
+	''' Main function '''
+	# Meta variables
+	dockerfiles, yamls = locate_files(docker_dir, k8s_dir)
+	results = []
 
-for file in files:
-	print('Searching ', file, ' for set USER')
-	result = find_pattern(file, pattern)
-	if result:
-		passed.append(file)
-	else:
-		failed.append(file)
+	##########
+	# RULE 2 #
+	##########
+	pattern = re.compile('USER')
+	results.append(dict(rule_2=True))
+	if not compliant(dockerfiles, yamls, pattern, eval_docker=True):
+		results.append(dict(rule_2=False))
 
-print("Passed: ", passed)
-print("Failed: ", failed)
+	##########
+	# RULE 3 #
+	##########
+	pattern = re.compile('capabilities:')
+	results.append(dict(rule_3=True))
+	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
+		results.append(dict(rule_3=False))
+
+	##########
+	# RULE 4 #
+	##########
+	pattern = re.compile('allowPrivilegeEscalation: false')
+	results.append(dict(rule_4=True))
+	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
+		results.append(dict(rule_4=False))
+
+	##########
+	# RULE 7 #
+	##########
+	pattern = re.compile('limits:')
+	results.append(dict(rule_7=True))
+	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
+		results.append(dict(rule_7=False))
+
+	##########
+	# RULE 8 #
+	##########
+	pattern = re.compile('readOnlyRootFilesystem: true')
+	results.append(dict(rule_8=True))
+	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
+		results.append(dict(rule_8=False))
+
+	# Results
+	for rule in results:
+		print(rule)
+
+
+if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	# Dockerfile(s) root directory
+	parser.add_argument(
+		'--docker-dir',
+		'-d',
+		default=DEFAULT_ROOT_DIR,
+		help='The root dir of any Dockerfiles to parse'
+	)
+	# Kubernetes yamls root directory
+	parser.add_argument(
+		'--k8s-dir', '-k',
+		default=DEFAULT_ROOT_DIR,
+		help='The root dir of any Kubernetes config files to parse'
+	)
+	args = parser.parse_args()
+	main(args.docker_dir, args.k8s_dir)
