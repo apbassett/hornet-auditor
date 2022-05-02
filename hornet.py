@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 # Default root directory location to search for files from
-DEFAULT_ROOT_DIR = './test/'
+DEFAULT_ROOT_DIR = './'
 
 def find_pattern(filename, pattern):
 	'''
@@ -22,13 +22,14 @@ def find_pattern(filename, pattern):
 
 	for line in file:
 		#ignores comments and blank lines
-		if len(line) > 1 and line.strip()[0] != '#': 
+		if len(line.strip()) > 1 and line.strip()[0] != '#': 
 			matches += pattern.findall(line)
 
 	file.close()
 
 	if len(matches) < 1:
 		return False
+	print(f'Found matches: {matches} in {filename}')
 	return True
 
 
@@ -39,14 +40,14 @@ def compliant(dockerfiles, yamls, pattern, eval_docker=False, eval_yamls=False):
 	'''
 	if eval_yamls:
 		for yaml in yamls:
-			if find_pattern(yaml):
+			if find_pattern(yaml, pattern):
 				break
-	else:
-		for dockerfile in dockerfiles:
-			if not find_pattern(dockerfile):
-				return False
 		else:
 			return False	
+	else:
+		for dockerfile in dockerfiles:
+			if not find_pattern(dockerfile, pattern):
+				return False
 	return True
 
 
@@ -70,41 +71,46 @@ def main(docker_dir, k8s_dir):
 	# RULE 2 #
 	##########
 	pattern = re.compile('USER')
-	results.append(dict(rule_2=True))
 	if not compliant(dockerfiles, yamls, pattern, eval_docker=True):
 		results.append(dict(rule_2=False))
+	else:
+		results.append(dict(rule_2=True))
 
 	##########
 	# RULE 3 #
 	##########
 	pattern = re.compile('capabilities:')
-	results.append(dict(rule_3=True))
 	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
 		results.append(dict(rule_3=False))
+	else:
+		results.append(dict(rule_3=True))
 
 	##########
 	# RULE 4 #
 	##########
 	pattern = re.compile('allowPrivilegeEscalation: false')
-	results.append(dict(rule_4=True))
 	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
 		results.append(dict(rule_4=False))
+	else:
+		results.append(dict(rule_4=True))
 
 	##########
 	# RULE 7 #
 	##########
 	pattern = re.compile('limits:')
-	results.append(dict(rule_7=True))
 	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
 		results.append(dict(rule_7=False))
+	else:
+		results.append(dict(rule_7=True))
 
 	##########
 	# RULE 8 #
 	##########
 	pattern = re.compile('readOnlyRootFilesystem: true')
-	results.append(dict(rule_8=True))
 	if not compliant(dockerfiles, yamls, pattern, eval_yamls=True):
 		results.append(dict(rule_8=False))
+	else:
+		results.append(dict(rule_8=True))
 
 	# Results
 	for rule in results:
